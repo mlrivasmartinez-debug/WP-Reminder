@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhatsApp Reminders</title>
+<style>
+  :root { --bg:#0b141a; --panel:#111b21; --green:#25d366; --green2:#1da851; --text:#e9edef; --muted:#8696a0; --line:#222e35; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--text); }
+  .wrap { max-width:560px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:22px; display:flex; align-items:center; gap:10px; }
+  h1 .logo { width:30px;height:30px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px; }
+  .add { display:flex; gap:8px; margin:18px 0; }
+  input[type=text]{ flex:1; padding:13px 14px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--text); font-size:15px; }
+  input[type=text]:focus{ outline:none; border-color:var(--green); }
+  button { cursor:pointer; border:none; border-radius:10px; font-size:15px; font-weight:600; }
+  .add button { background:var(--green); color:#04220f; padding:0 18px; }
+  .add button:hover { background:var(--green2); }
+  ul { list-style:none; padding:0; margin:0; }
+  li { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 14px; margin-bottom:10px; display:flex; align-items:center; gap:12px; }
+  li.done { opacity:.5; }
+  li.done .txt { text-decoration:line-through; color:var(--muted); }
+  .txt { flex:1; font-size:15px; word-break:break-word; }
+  .meta { font-size:11px; color:var(--muted); margin-top:3px; }
+  .check { width:24px;height:24px;border-radius:50%;border:2px solid var(--muted);background:none;flex:none;display:flex;align-items:center;justify-content:center;color:transparent; }
+  li.done .check { background:var(--green); border-color:var(--green); color:#04220f; }
+  .del { background:none;color:var(--muted);font-size:18px;padding:4px 8px; }
+  .del:hover { color:#f15c6d; }
+  .empty { text-align:center; color:var(--muted); padding:40px 0; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--green); color:#04220f; padding:12px 20px; border-radius:24px; font-weight:600; box-shadow:0 4px 16px rgba(0,0,0,.4); opacity:0; transition:opacity .25s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  .err { background:#3a1d1d;border:1px solid #5a2a2a;color:#f0b0b0;padding:12px;border-radius:10px;margin:12px 0;font-size:13px;display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="logo">✅</span> WhatsApp Reminders</h1>
+  <div id="err" class="err"></div>
+  <div class="add">
+    <input id="newTask" type="text" placeholder="Add a task…" autocomplete="off">
+    <button onclick="addTask()">Add</button>
+  </div>
+  <ul id="list"></ul>
+  <div id="empty" class="empty" style="display:none">No tasks yet. Add one above 👆</div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ===== CONFIG — fill these two in ===== */
+const JSONBIN_BIN_ID     = "6a3b306fda38895dfef4d488";  // your JSONBin bin id
+const JSONBIN_ACCESS_KEY = "$2a$10$w8vUtk2YIsXmPdf6pKDtfu5gJs6QptqPIT0f3yt7MC/ULurl2G7Qu";  // scoped access key (read+update)
+/* ====================================== */
+
+const API = `https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`;
+const HEAD = { "X-Access-Key": JSONBIN_ACCESS_KEY, "Content-Type": "application/json" };
+let tasks = [];
+
+function showErr(m){ const e=document.getElementById('err'); e.textContent=m; e.style.display='block'; }
+function toast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1800); }
+
+async function load(){
+  try{
+    const r = await fetch(API + "/latest", { headers: HEAD });
+    if(!r.ok) throw new Error("Read failed ("+r.status+")");
+    const d = await r.json();
+    tasks = (d.record && d.record.tasks) || [];
+    render();
+    await handleDoneParam();
+  }catch(e){ showErr("Couldn't load tasks: "+e.message+". Check your BIN_ID and ACCESS_KEY."); }
+}
+
+async function save(){
+  const r = await fetch(API, { method:"PUT", headers: HEAD, body: JSON.stringify({ tasks }) });
+  if(!r.ok) throw new Error("Save failed ("+r.status+")");
+}
+
+function render(){
+  const ul = document.getElementById('list');
+  const open = tasks.filter(t=>!t.done);
+  const done = tasks.filter(t=>t.done);
+  const ordered = [...open, ...done];
+  document.getElementById('empty').style.display = ordered.length ? 'none':'block';
+  ul.innerHTML = ordered.map(t => `
+    <li class="${t.done?'done':''}">
+      <button class="check" onclick="toggle('${t.id}')">✓</button>
+      <div class="txt">${esc(t.text)}<div class="meta">${new Date(t.created).toLocaleDateString()}</div></div>
+      <button class="del" onclick="del('${t.id}')">✕</button>
+    </li>`).join('');
+}
+function esc(s){ return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+async function addTask(){
+  const inp = document.getElementById('newTask');
+  const text = inp.value.trim();
+  if(!text) return;
+  tasks.push({ id: Math.random().toString(36).slice(2,9), text, done:false, created:new Date().toISOString() });
+  inp.value = "";
+  render();
+  try{ await save(); toast("Added"); }catch(e){ showErr(e.message); }
+}
+
+async function toggle(id){
+  const t = tasks.find(x=>x.id===id); if(!t) return;
+  t.done = !t.done;
+  render();
+  try{ await save(); toast(t.done?"Done ✅":"Reopened"); }catch(e){ showErr(e.message); }
+}
+
+async function del(id){
+  tasks = tasks.filter(x=>x.id!==id);
+  render();
+  try{ await save(); }catch(e){ showErr(e.message); }
+}
+
+// Handle "Mark done" links from WhatsApp: ?done=<id>
+async function handleDoneParam(){
+  const id = new URLSearchParams(location.search).get('done');
+  if(!id) return;
+  const t = tasks.find(x=>x.id===id);
+  if(t && !t.done){ t.done = true; render(); try{ await save(); }catch(e){} }
+  toast(t ? "Marked done ✅" : "Already cleared");
+  history.replaceState({}, "", location.pathname); // clean the URL
+}
+
+document.getElementById('newTask').addEventListener('keydown', e=>{ if(e.key==='Enter') addTask(); });
+load();
+</script>
+</body>
+</html>
