@@ -15,9 +15,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
       - run: node scripts/send-reminders.js
         env:
+          EVENT_NAME:         ${{ github.event_name }}
           JSONBIN_BIN_ID:     ${{ secrets.JSONBIN_BIN_ID }}
           JSONBIN_MASTER_KEY: ${{ secrets.JSONBIN_MASTER_KEY }}
           CALLMEBOT_PHONE:    ${{ secrets.CALLMEBOT_PHONE }}
