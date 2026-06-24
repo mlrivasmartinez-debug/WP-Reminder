@@ -1,0 +1,25 @@
+name: WhatsApp Reminders
+
+# Times are UTC. El Salvador is UTC-6, so local + 6 = UTC.
+on:
+  schedule:
+    - cron: '0 14 * * *'   # 08:00 El Salvador
+    - cron: '0 19 * * *'   # 13:00 El Salvador
+    - cron: '0 1 * * *'    # 19:00 El Salvador
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: node scripts/send-reminders.js
+        env:
+          JSONBIN_BIN_ID:     ${{ secrets.JSONBIN_BIN_ID }}
+          JSONBIN_MASTER_KEY: ${{ secrets.JSONBIN_MASTER_KEY }}
+          CALLMEBOT_PHONE:    ${{ secrets.CALLMEBOT_PHONE }}
+          CALLMEBOT_APIKEY:   ${{ secrets.CALLMEBOT_APIKEY }}
+          PAGE_URL:           ${{ secrets.PAGE_URL }}
